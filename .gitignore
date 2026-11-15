@@ -1,0 +1,18 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+
+# Signing keys never enter the repository
+*.keystore
+*.jks
+
+# Built APKs are ignored except the one the contest asks for
+*.apk
+!apk/DND_DND_release.apk
+
+.DS_Store
+Thumbs.db

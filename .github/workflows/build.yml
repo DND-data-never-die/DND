@@ -1,0 +1,184 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Runner facts (time zone, JDK, Android SDK)
+        run: |
+          chmod +x gradlew
+          date
+          echo "TZ=${TZ:-unset}  /etc/timezone=$(cat /etc/timezone 2>/dev/null || echo none)"
+          java -version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
+          echo "cpus=$(nproc)"; free -h | head -2
+          ls -la ~/.android/ 2>/dev/null || echo "no ~/.android before the build"
+
+      # Basic caching is the open-source (MIT) provider; the default provider is a proprietary
+      # component offered to private repositories only as a preview.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Core tests (runner time zone)
+        run: ./gradlew :core:test --console=plain
+
+      - name: Record screenshots (Robolectric + Roborazzi)
+        id: record
+        run: ./gradlew :app:recordRoborazziDebug --console=plain
+
+      - name: Check image sizes (app window 1700x1184, display context 2560x1440)
+        run: |
+          python3 - <<'EOF'
+          import glob, struct, sys
+          sets = [("app/build/outputs/roborazzi/[!d]*.png", (1700, 1184)), ("app/build/outputs/roborazzi/display_context.png", (2560, 1440)),
+                  ("app/build/outputs/roborazzi/video/*.png", (1700, 1184))]
+          bad = 0
+          for pattern, size in sets:
+              files = sorted(glob.glob(pattern))
+              if not files:
+                  print(f"{pattern}: no PNG"); bad += 1; continue
+              wrong = []
+              for f in files:
+                  with open(f, "rb") as fh:
+                      head = fh.read(24)
+                  if head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
+                      wrong.append(f"{f}: not a PNG"); continue
+                  w, h = struct.unpack(">II", head[16:24])
+                  if (w, h) != size:
+                      wrong.append(f"{f}: {w}x{h}")
+              print(f"{pattern}: {len(files)} files, expected {size[0]}x{size[1]}, wrong: {len(wrong)}")
+              for line in wrong:
+                  print("  " + line)
+              bad += len(wrong)
+          for f in sorted(glob.glob("app/build/outputs/roborazzi/*.png")):
+              print("  " + f.rsplit("/", 1)[-1])
+          sys.exit(1 if bad else 0)
+          EOF
+
+      - name: Text amount per screen (UI round 3 budget)
+        run: |
+          column -t -s $'\t' app/build/outputs/roborazzi/text_counts.tsv
+          column -t -s $'\t' app/build/outputs/roborazzi/bounds.tsv
+
+      - name: Greyscale copies of the screens (ITU-R BT.601 luma)
+        run: python3 .github/scripts/grayscale.py app/build/outputs/roborazzi/gray app/build/outputs/roborazzi/*.png
+
+      - name: Upload screenshots
+        if: ${{ !cancelled() && steps.record.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          # layout_check/ holds review-only images (other screen sizes, pictogram sheet); gray/ holds
+          # greyscale copies for checking that every state reads without colour.
+          path: |
+            app/build/outputs/roborazzi/*.png
+            app/build/outputs/roborazzi/layout_check/*.png
+            app/build/outputs/roborazzi/gray/*.png
+            app/build/outputs/roborazzi/text_counts.tsv
+            app/build/outputs/roborazzi/bounds.tsv
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload video frames
+        if: ${{ !cancelled() && steps.record.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: video-frames
+          path: app/build/outputs/roborazzi/video/*.png
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build debug APK
+        run: |
+          ./gradlew :app:assembleDebug --console=plain
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apk/"
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Check release signing secrets
+        id: signing
+        env:
+          KS_B64: ${{ secrets.DND_KEYSTORE_B64 }}
+          KS_PASSWORD: ${{ secrets.DND_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.DND_KEY_ALIAS }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASSWORD" ] && [ -n "$KS_ALIAS" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release APK not built::The secrets DND_KEYSTORE_B64, DND_KEYSTORE_PASSWORD and DND_KEY_ALIAS are not all set, so the signed release APK was skipped. Screenshots and the debug APK are still built."
+          fi
+
+      # Until the real key exists: prove that a release build without the variables stops,
+      # and that the signing path works with a throwaway key (deleted, never uploaded).
+      - name: Release path check (no key, then throwaway key)
+        if: steps.signing.outputs.ready != 'true'
+        run: |
+          set -euo pipefail
+          if ./gradlew :app:assembleRelease --console=plain > "$RUNNER_TEMP/guard.log" 2>&1; then
+            cat "$RUNNER_TEMP/guard.log"; echo "::error::assembleRelease succeeded without signing variables"; exit 1
+          fi
+          grep -m1 "Release signing is not configured" "$RUNNER_TEMP/guard.log"
+          if ls app/build/outputs/apk/release/*.apk 2>/dev/null; then
+            echo "::error::a release APK was written without signing"; exit 1
+          fi
+          echo "guard ok: no release APK without the signing variables"
+          KS="$RUNNER_TEMP/throwaway.p12"
+          keytool -genkeypair -keystore "$KS" -storetype PKCS12 -alias dryrun -keyalg RSA -keysize 2048 \
+            -validity 1 -dname "CN=DND dry run" -storepass dryrun-pass -keypass different-pass 2>&1
+          DND_KEYSTORE_FILE="$KS" DND_KEYSTORE_PASSWORD=dryrun-pass DND_KEY_ALIAS=dryrun \
+            ./gradlew :app:assembleRelease --console=plain
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          # With minSdk 28 apksigner checks only v3 by default; asking for API 24 makes it check v2 too.
+          "$BT/apksigner" verify --verbose --min-sdk-version 24 app/build/outputs/apk/release/app-release.apk | grep "Verified using"
+          rm -f app/build/outputs/apk/release/*.apk "$KS"
+
+      - name: Build signed release APK
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          KS_B64: ${{ secrets.DND_KEYSTORE_B64 }}
+          DND_KEYSTORE_PASSWORD: ${{ secrets.DND_KEYSTORE_PASSWORD }}
+          DND_KEY_ALIAS: ${{ secrets.DND_KEY_ALIAS }}
+        run: |
+          export DND_KEYSTORE_FILE="$RUNNER_TEMP/dnd-release.jks"
+          trap 'rm -f "$DND_KEYSTORE_FILE"' EXIT
+          printf '%s' "$KS_B64" | base64 --decode > "$DND_KEYSTORE_FILE"
+          ./gradlew :app:assembleRelease --console=plain
+
+      - name: Verify release signature
+        if: steps.signing.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$BT/apksigner" verify --verbose --print-certs "$APK"
+          # With minSdk 28 apksigner checks only v3 by default; asking for API 24 makes it check v2 too.
+          "$BT/apksigner" verify --verbose --min-sdk-version 24 "$APK" | grep "Verified using"
+          cp "$APK" "$RUNNER_TEMP/apk/DND_DND_release.apk"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: ${{ runner.temp }}/apk/
+          if-no-files-found: error
+          retention-days: 3

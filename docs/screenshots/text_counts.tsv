@@ -1,0 +1,19 @@
+screen	elements	characters	longest	longest_text	over_10	over_10_texts	sentence_chars_max	units_per_card_max	manual_quotations	read_s_9.16	read_s_6.4
+vehicle_detail_s2_severe	34	142	8	엔진 오일 교체 시기	0		8	4; list 4 rows	0	15.5	22.2
+trip_end_unselected	33	147	20	돌아가는 길에는 휴게소에서 15분 쉬어 가세요	1	돌아가는 길에는 휴게소에서 15분 쉬어 가세요	19	4	0	16.0	23.0
+replay_1300	19	68	7	42,080km	0		6	panel 5 signals	0	7.4	10.6
+replay_1415	23	87	8	운행을 마쳤습니다	0		8	panel 5 signals	0	9.5	13.6
+replay_1630	21	97	24	2시간 연속 운전하셨으니 가까운 휴게소에서 쉬어 가세요	1	2시간 연속 운전하셨으니 가까운 휴게소에서 쉬어 가세요	24	panel 5 signals	0	10.6	15.2
+replay_1710	26	100	8	운행을 마쳤습니다	0		8	panel 5 signals	0	10.9	15.6
+launch	4	25	13	Data Never Dies	1	Data Never Dies	5	1	0	2.7	3.9
+trip_end	33	147	20	돌아가는 길에는 휴게소에서 15분 쉬어 가세요	1	돌아가는 길에는 휴게소에서 15분 쉬어 가세요	19	4	0	16.0	23.0
+briefing_none	5	37	20	엔진 오일 교체까지 7,311km 또는 177일	1	엔진 오일 교체까지 7,311km 또는 177일	14	2	0	4.0	5.8
+weekly	29	108	19	월요일과 화요일은 출발 시각을 조정해 보세요	1	월요일과 화요일은 출발 시각을 조정해 보세요	19	4	0	11.8	16.9
+briefing_handover	6	32	11	연료 45% → 15%, 워셔액 부족	1	연료 45% → 15%, 워셔액 부족	9	3	0	3.5	5.0
+vehicle_detail_severe	34	147	8	엔진 오일 교체 시기	0		8	4; list 4 rows	0	16.0	23.0
+trip_end_rhd	33	147	20	돌아가는 길에는 휴게소에서 15분 쉬어 가세요	1	돌아가는 길에는 휴게소에서 15분 쉬어 가세요	19	4	0	16.0	23.0
+vehicle_detail_s2	33	137	8	엔진 오일 교체 시기	0		8	4; list 4 rows	0	15.0	21.4
+evidence	22	68	6	2시간 40분	0		5	list 4 rows + sum + index	0	7.4	10.6
+vehicle_detail	33	141	8	엔진 오일 교체 시기	0		8	4; list 4 rows	0	15.4	22.0
+briefing_record	5	25	8	엔진 오일 교체 완료	0		8	2	0	2.7	3.9
+vehicle_detail_phrases	33	171	12	짧은 거리를 반복적으로 주행	3	짧은 거리를 반복적으로 주행 | 교통 체증이 심한 구역 주행 | 잦은 고속 주행 및 급가감속	12	4; list 4 rows	4	18.7	26.7

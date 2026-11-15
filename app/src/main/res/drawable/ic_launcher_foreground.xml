@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The letters DND drawn as strokes inside the 66 dp safe zone of a 108 dp adaptive icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M29,45 L31,45 A9,9 0 0 1 31,63 L29,63 Z"
+        android:strokeColor="#111111"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M48.5,65 L48.5,45 L59.5,63 L59.5,43"
+        android:strokeColor="#111111"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M68,45 L70,45 A9,9 0 0 1 70,63 L68,63 Z"
+        android:strokeColor="#111111"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round" />
+</vector>

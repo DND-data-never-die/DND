@@ -1,0 +1,86 @@
+name: device
+
+# Started by hand only (gh workflow run device.yml): builds the signed release APK, runs it on an
+# emulator shaped like the Connect display, and records one unattended scenario 1 run.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Emulator system image target"
+        default: default
+        type: choice
+        options: [default, android-automotive]
+
+concurrency:
+  group: device-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  device:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Build signed release APK
+        env:
+          KS_B64: ${{ secrets.DND_KEYSTORE_B64 }}
+          DND_KEYSTORE_PASSWORD: ${{ secrets.DND_KEYSTORE_PASSWORD }}
+          DND_KEY_ALIAS: ${{ secrets.DND_KEY_ALIAS }}
+        run: |
+          chmod +x gradlew
+          export DND_KEYSTORE_FILE="$RUNNER_TEMP/dnd-release.jks"
+          trap 'rm -f "$DND_KEYSTORE_FILE"' EXIT
+          printf '%s' "$KS_B64" | base64 --decode > "$DND_KEYSTORE_FILE"
+          ./gradlew :app:assembleRelease --console=plain
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/DND_DND_release.apk"
+          ls -l "$RUNNER_TEMP/DND_DND_release.apk"
+          # Free the memory for the emulator.
+          ./gradlew --stop
+
+      # From the android-emulator-runner README: hardware acceleration on Linux runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on the emulator (2560x1440, 160 DPI)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: ${{ inputs.target }}
+          system-image-api-level: ${{ inputs.target == 'android-automotive' && '34-ext9' || '34' }}
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -skin 2560x1440
+          script: bash .github/scripts/device_run.sh
+
+      - name: Upload screenshots and logcat
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-screenshots
+          path: |
+            ${{ runner.temp }}/device/*.png
+            ${{ runner.temp }}/device/logcat.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload screen recording
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-video
+          path: ${{ runner.temp }}/device/*.mp4
+          if-no-files-found: warn
+          retention-days: 1
